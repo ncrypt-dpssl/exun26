@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arcade Screen</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background-color: #000;
+      background-image: url('assets/background.png');
+      background-repeat: no-repeat;
+      background-position: center center;
+      background-size: cover;
+      background-attachment: fixed;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .arcade-stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      max-width: 100vw;
+      max-height: 100vh;
+      aspect-ratio: 16 / 9;
+    }
+
+    .screen-viewport {
+      position: absolute;
+      top: 28.4%;
+      left: 24.7%;
+      width: 54.2%;
+      height: 50.4%;
+      overflow: hidden;
+      background: #000;
+      box-shadow:
+        0 0 18px 4px rgba(255, 60, 40, 0.55),
+        0 0 48px 12px rgba(200, 30, 20, 0.30),
+        0 0 90px 30px rgba(160, 20, 10, 0.18);
+      animation: screenGlow 1s ease-in-out infinite alternate;
+    }
+
+    @keyframes screenGlow {
+      0% {
+        box-shadow: 0 0 18px 4px rgba(255, 60, 40, .55), 0 0 48px 12px rgba(200, 30, 20, .30), 0 0 90px 30px rgba(160, 20, 10, .18);
+      }
+
+      100% {
+        box-shadow: 0 0 24px 6px rgba(255, 54, 23, 0.877), 0 0 60px 18px rgba(220, 40, 25, .40), 0 0 110px 40px rgba(180, 25, 15, .25);
+      }
+    }
+
+    .game-screen {
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+      display: block;
+      filter: brightness(1.08) saturate(1.15) contrast(1.05);
+      animation: crtFlicker 0.8s linear infinite;
+    }
+
+    @keyframes crtFlicker {
+
+      0%,
+      97%,
+      100% {
+        opacity: 1;
+      }
+
+      97.5% {
+        opacity: 0.85;
+      }
+
+      98% {
+        opacity: 1;
+      }
+
+      98.6% {
+        opacity: 0.55;
+      }
+
+      99% {
+        opacity: 1;
+      }
+    }
+
+    .screen-crt {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      background:
+        repeating-linear-gradient(to bottom,
+          transparent 0px,
+          transparent 2px,
+          rgba(0, 0, 0, 0.18) 2px,
+          rgba(0, 0, 0, 0.18) 4px),
+        radial-gradient(ellipse 90% 85% at 50% 50%,
+          transparent 55%,
+          rgba(0, 0, 0, 0.55) 100%);
+      mix-blend-mode: multiply;
+    }
+
+    .screen-viewport.glow-off {
+      box-shadow: none !important;
+      animation: none !important;
+    }
+
+    .arcade-cabinet {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+      display: block;
+    }
+
+    .joystick-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 11;
+      display: block;
+    }
+
+    .anim-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 20;
+      display: none;
+    }
+
+    @keyframes arcadeShake {
+      0%, 100% { transform: translateX(0); }
+      15% { transform: translateX(-14px) rotate(-0.5deg); }
+      30% { transform: translateX(12px) rotate(0.5deg); }
+      45% { transform: translateX(-10px) rotate(-0.3deg); }
+      60% { transform: translateX(8px) rotate(0.2deg); }
+      75% { transform: translateX(-4px); }
+      90% { transform: translateX(2px); }
+    }
+
+    .arcade-stage.shake {
+      animation: arcadeShake 0.4s ease-in-out;
+    }
+
+    .sockets-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: auto;
+      z-index: 30;
+      display: none;
+    }
+
+    .wire-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .socket-target {
+      position: absolute;
+      pointer-events: auto;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      outline: none;
+    }
+
+    .socket-target.connected {
+      pointer-events: none !important;
+      cursor: default !important;
+    }
+  </style>
+</head>
+
+<body>
+    <div class="arcade-stage">
+      <div id="screen-viewport" class="screen-viewport">
+        <img src="assets/start.png" class="game-screen" alt="Game Background">
+        <div class="screen-crt"></div>
+      </div>
+      <!-- Cabinet base (without joystick) -->
+      <img id="cabinet-base" src="assets/arcade_screen_on_minus-joystick.png" class="arcade-cabinet" alt="Arcade Cabinet">
+      <!-- Joystick frame overlay — frame 0 is shown by default, overridden by JS -->
+      <img id="joystick-sprite" src="assets/joystick_frames/0000.webp" class="joystick-layer" alt="Joystick">
+      <!-- Animation canvas overlay -->
+      <canvas id="anim-canvas" width="1920" height="1080" class="anim-canvas"></canvas>
+
+      <!-- Interactive Sockets Overlay -->
+      <div id="sockets-overlay" class="sockets-overlay">
+        <svg id="wire-svg" class="wire-svg" viewBox="0 0 1920 1080">
+          <path id="preview-wire" d="" stroke="#1a1a1a" stroke-width="12" stroke-linecap="round" fill="none" style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.6)); display: none;" />
+          <path id="preview-wire-inner" d="" stroke="#555" stroke-width="4" stroke-linecap="round" fill="none" style="display: none;" />
+        </svg>
+
+        <!-- Left Sockets (x: 400 to 550) -->
+        <div class="socket-target" data-socket="left-top" style="left: 20.8333%; top: 18.5185%; width: 7.8125%; height: 18.5185%;" title="Top Left Socket"></div>
+        <div class="socket-target" data-socket="left-middle" style="left: 20.8333%; top: 46.2963%; width: 7.8125%; height: 13.8889%;" title="Middle Left Socket"></div>
+        <div class="socket-target" data-socket="left-bottom" style="left: 20.8333%; top: 64.8148%; width: 7.8125%; height: 18.5185%;" title="Bottom Left Socket"></div>
+
+        <!-- Right Sockets (x: 1400 to 1550) -->
+        <div class="socket-target" data-socket="right-top" style="left: 72.9167%; top: 23.1481%; width: 7.8125%; height: 13.8889%;" title="Top Right Socket"></div>
+        <div class="socket-target" data-socket="right-middle" style="left: 72.9167%; top: 46.2963%; width: 7.8125%; height: 13.8889%;" title="Middle Right Socket"></div>
+        <div class="socket-target" data-socket="right-bottom" style="left: 72.9167%; top: 64.8148%; width: 7.8125%; height: 18.5185%;" title="Bottom Right Socket"></div>
+      </div>
+    </div>
+
+    <script>
+      // ── Frame ranges ──────────────────────────────────────────────
+      const FRAMES = {
+        a: { start: 1,  end: 8  },   // left
+        d: { start: 9,  end: 17 },   // right
+        s: { start: 18, end: 26 },   // down
+        w: { start: 27, end: 35 },   // up
+      };
+      const FRAME_MS = 20; // ~50fps
+
+      const sprite = document.getElementById('joystick-sprite');
+
+      // ── State machine ─────────────────────────────────────────────
+      // animState: 'idle' | 'forward' | 'holding' | 'reverse'
+      let animState  = 'idle';
+      let activeKey  = null;   // key currently animating forward/holding
+      let pendingKey = null;   // key to activate after reverse completes
+      let currentFrame = 0;
+      let animTimer  = null;
+      const keysHeld = new Set();
+
+      // ── Helpers ───────────────────────────────────────────────────
+      function pad(n) { return String(n).padStart(4, '0'); }
+
+      function showFrame(n) {
+        currentFrame = n;
+        sprite.src = `assets/joystick_frames/${pad(n)}.webp`;
+      }
+
+      function stopAnim() {
+        if (animTimer !== null) { clearInterval(animTimer); animTimer = null; }
+      }
+
+      function pickActiveKey() {
+        let last = null;
+        keysHeld.forEach(k => { last = k; });
+        return last;
+      }
+
+      /** Play forward from key's start to its end, then hold. */
+      function startForward(key) {
+        stopAnim();
+        animState = 'forward';
+        activeKey = key;
+        const { start, end } = FRAMES[key];
+        showFrame(start);
+
+        animTimer = setInterval(() => {
+          if (currentFrame >= end) {
+            stopAnim();
+            animState = 'holding';
+            return;
+          }
+          showFrame(currentFrame + 1);
+        }, FRAME_MS);
+      }
+
+      /**
+       * Reverse within the active key's own frame range (e.g. W: 35→27),
+       * then snap to frame 0 and call onDone().
+       * This avoids passing through other keys' frames.
+       */
+      function startReverse(onDone) {
+        stopAnim();
+        animState = 'reverse';
+
+        // floor = first frame of this key's range (we stop reversing here, then snap to 0)
+        const floor = activeKey ? FRAMES[activeKey].start : 0;
+
+        if (currentFrame <= floor) { showFrame(0); onDone(); return; }
+
+        animTimer = setInterval(() => {
+          if (currentFrame <= floor) {
+            stopAnim();
+            showFrame(0); // snap to neutral
+            onDone();
+            return;
+          }
+          showFrame(currentFrame - 1);
+        }, FRAME_MS);
+      }
+
+
+      function onReverseDone() {
+        animState = 'idle';
+        activeKey = null;
+        if (pendingKey) {
+          const key = pendingKey;
+          pendingKey = null;
+          startForward(key);
+        }
+      }
+
+      // ── Input handling ────────────────────────────────────────────
+      function handleInputChange() {
+        const targetKey = pickActiveKey(); // null if no keys held
+
+        if (animState === 'idle') {
+          if (targetKey) startForward(targetKey);
+          return;
+        }
+
+        if (animState === 'forward' || animState === 'holding') {
+          if (targetKey === activeKey) return; // same key still active
+          // Switch target: reverse current, then play target (or idle)
+          pendingKey = targetKey;
+          startReverse(onReverseDone);
+          return;
+        }
+
+        if (animState === 'reverse') {
+          // Already reversing — just update what we'll do when done
+          pendingKey = targetKey;
+          return;
+        }
+      }
+
+      function onKeyDown(e) {
+        if (isScrollAnimationActive) return;
+        const key = e.key.toLowerCase();
+        if (!FRAMES[key] || keysHeld.has(key)) return;
+        e.preventDefault();
+        keysHeld.add(key);
+        handleInputChange();
+      }
+
+      function onKeyUp(e) {
+        if (isScrollAnimationActive) return;
+        const key = e.key.toLowerCase();
+        if (!FRAMES[key]) return;
+        e.preventDefault();
+        keysHeld.delete(key);
+        handleInputChange();
+      }
+
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup',   onKeyUp);
+
+      // ── Elements for Rotation, Flicker & Wire Puzzle ────────────
+      const screenViewport = document.getElementById('screen-viewport');
+      const cabinetBase    = document.getElementById('cabinet-base');
+      const animCanvas     = document.getElementById('anim-canvas');
+      const animCtx        = animCanvas.getContext('2d');
+      const arcadeStage    = document.querySelector('.arcade-stage');
+      const socketsOverlay = document.getElementById('sockets-overlay');
+      const previewWire    = document.getElementById('preview-wire');
+      const previewWireInner = document.getElementById('preview-wire-inner');
+
+      // ── Rotation & Wire Animation Configuration ───────────────────
+      const ROTATION_START = 36;
+      const ROTATION_END   = 246;
+      const ROTATION_FPS   = 45;
+      const FRAME_INTERVAL = 1000 / ROTATION_FPS;
+
+      // Socket centers in 1920x1080 stage coordinates for wire drawing
+      const SOCKET_CENTERS = {
+        'left-top':      { x: 475, y: 300 },
+        'left-middle':   { x: 475, y: 575 },
+        'left-bottom':   { x: 475, y: 800 },
+        'right-top':     { x: 1475, y: 325 },
+        'right-middle':  { x: 1475, y: 575 },
+        'right-bottom':  { x: 1475, y: 800 }
+      };
+
+      // Stages of wire connection:
+      // 1. Top connects to Middle (frames 0145 to 0181)
+      // 2. Bottom connects to Top (frames 0182 to 0215)
+      // 3. Middle connects to Bottom (frames 0216 to 0246)
+      const WIRE_STAGES = [
+        { left: 'top',    right: 'middle', start: 145, end: 181 },
+        { left: 'bottom', right: 'top',    start: 182, end: 215 },
+        { left: 'middle', right: 'bottom', start: 216, end: 246 }
+      ];
+
+      let currentWireStage = 0;
+      let isWireAnimating  = false;
+      let selectedLeft     = null;
+      let isDragging       = false;
+      let dragStartPos     = null;
+
+      let isScrollAnimationActive = false;
+      let hasAnimationFinished    = false;
+
+      // Preload flicker images
+      const offImg = new Image();
+      offImg.src = 'assets/arcade_screen_off.png';
+
+      const onImg = new Image();
+      onImg.src = 'assets/arcade_screen_on.png';
+
+      // Preload rotation frames (0036.webp to 0246.webp)
+      const rotationImgs = [];
+      for (let i = ROTATION_START; i <= ROTATION_END; i++) {
+        const img = new Image();
+        img.src = `assets/rotation/${pad(i)}.webp`;
+        rotationImgs.push(img);
+      }
+
+      function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+      }
+
+      function ensureImageLoaded(img) {
+        if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+        return new Promise(resolve => {
+          img.onload  = () => resolve();
+          img.onerror = () => resolve();
+        });
+      }
+
+      function setScreenState(state) {
+        animCtx.clearRect(0, 0, 1920, 1080);
+        if (state === 'off') {
+          animCtx.drawImage(offImg, 0, 0);
+          screenViewport.classList.add('glow-off');
+          screenViewport.style.visibility = 'hidden';
+        } else {
+          animCtx.drawImage(onImg, 0, 0);
+          screenViewport.classList.remove('glow-off');
+          screenViewport.style.visibility = 'visible';
+        }
+      }
+
+      function renderFrameNum(frameNum) {
+        const idx = frameNum - ROTATION_START;
+        const img = rotationImgs[idx];
+        if (img && img.complete && img.naturalWidth !== 0) {
+          animCtx.clearRect(0, 0, 1920, 1080);
+          animCtx.drawImage(img, 0, 0);
+        }
+      }
+
+      function playFrameRange(startFrame, endFrame) {
+        return new Promise(resolve => {
+          const isReverse = startFrame > endFrame;
+          let currentFrame = startFrame;
+          let lastTime = performance.now();
+
+          renderFrameNum(currentFrame);
+
+          function step(timestamp) {
+            const elapsed = timestamp - lastTime;
+            if (elapsed >= FRAME_INTERVAL) {
+              lastTime = timestamp - (elapsed % FRAME_INTERVAL);
+              if (isReverse) {
+                currentFrame--;
+                if (currentFrame >= endFrame) {
+                  renderFrameNum(currentFrame);
+                } else {
+                  renderFrameNum(endFrame);
+                  resolve();
+                  return;
+                }
+              } else {
+                currentFrame++;
+                if (currentFrame <= endFrame) {
+                  renderFrameNum(currentFrame);
+                } else {
+                  renderFrameNum(endFrame);
+                  resolve();
+                  return;
+                }
+              }
+            }
+            requestAnimationFrame(step);
+          }
+
+          requestAnimationFrame(step);
+        });
+      }
+
+      // ── Shake effect on wrong wire connection ─────────────────────
+      function triggerShake() {
+        arcadeStage.classList.remove('shake');
+        void arcadeStage.offsetWidth; // Force reflow
+        arcadeStage.classList.add('shake');
+        setTimeout(() => {
+          arcadeStage.classList.remove('shake');
+        }, 400);
+      }
+
+      // ── Interactive Wire UI Helpers ───────────────────────────────
+      function getStageCoordinates(clientX, clientY) {
+        const rect = arcadeStage.getBoundingClientRect();
+        const scaleX = 1920 / rect.width;
+        const scaleY = 1080 / rect.height;
+        return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY
+        };
+      }
+
+      function updatePreviewWire(startX, startY, endX, endY) {
+        const midX = (startX + endX) / 2;
+        const midY = Math.max(startY, endY) + 70;
+        const d = `M ${startX} ${startY} Q ${midX} ${midY} ${endX} ${endY}`;
+        previewWire.setAttribute('d', d);
+        previewWireInner.setAttribute('d', d);
+        previewWire.style.display = 'block';
+        previewWireInner.style.display = 'block';
+      }
+
+      function hidePreviewWire() {
+        previewWire.style.display = 'none';
+        previewWireInner.style.display = 'none';
+      }
+
+      function clearSelection() {
+        selectedLeft = null;
+        document.querySelectorAll('.socket-target.selected').forEach(el => el.classList.remove('selected'));
+        hidePreviewWire();
+      }
+
+      // ── Wire Connection Handler ───────────────────────────────────
+      async function handleConnection(leftKey, rightKey) {
+        if (isWireAnimating || currentWireStage >= WIRE_STAGES.length) return;
+
+        const expected = WIRE_STAGES[currentWireStage];
+
+        if (leftKey === expected.left && rightKey === expected.right) {
+          // Correct connection!
+          isWireAnimating = true;
+          clearSelection();
+
+          // Disable further clicks on these sockets
+          const leftEl  = document.querySelector(`[data-socket="left-${leftKey}"]`);
+          const rightEl = document.querySelector(`[data-socket="right-${rightKey}"]`);
+          if (leftEl)  leftEl.classList.add('connected');
+          if (rightEl) rightEl.classList.add('connected');
+
+          // Play wire connection frame segment
+          await playFrameRange(expected.start, expected.end);
+
+          currentWireStage++;
+          isWireAnimating = false;
+
+          if (currentWireStage >= WIRE_STAGES.length) {
+            // All wires connected!
+            socketsOverlay.style.display = 'none';
+
+            // Wait 1 second, then go back from frame 0145 to frame 0036
+            await sleep(1000);
+            await playFrameRange(145, 36);
+
+            hasAnimationFinished = true;
+          }
+        } else {
+          // Wrong connection! Shake cabinet
+          clearSelection();
+          triggerShake();
+        }
+      }
+
+      // ── Socket Event Listeners ────────────────────────────────────
+      document.querySelectorAll('.socket-target').forEach(el => {
+        const socketId = el.getAttribute('data-socket');
+        const [side, key] = socketId.split('-');
+
+        el.addEventListener('pointerdown', (e) => {
+          if (isWireAnimating || currentWireStage >= WIRE_STAGES.length) return;
+          if (el.classList.contains('connected')) return;
+
+          e.stopPropagation();
+
+          if (side === 'left') {
+            isDragging = true;
+            dragStartPos = { x: e.clientX, y: e.clientY };
+
+            if (selectedLeft === key) {
+              clearSelection();
+            } else {
+              clearSelection();
+              selectedLeft = key;
+              el.classList.add('selected');
+              const center = SOCKET_CENTERS[`left-${key}`];
+              const coords = getStageCoordinates(e.clientX, e.clientY);
+              updatePreviewWire(center.x, center.y, coords.x, coords.y);
+            }
+          } else if (side === 'right') {
+            if (!selectedLeft) {
+              // Clicked right socket without selecting left socket first -> shake
+              triggerShake();
+              return;
+            }
+            handleConnection(selectedLeft, key);
+          }
+        });
+
+        el.addEventListener('pointerup', (e) => {
+          if (isWireAnimating || currentWireStage >= WIRE_STAGES.length) return;
+          if (side === 'right' && selectedLeft && isDragging) {
+            e.stopPropagation();
+            isDragging = false;
+            handleConnection(selectedLeft, key);
+          }
+        });
+      });
+
+      document.addEventListener('pointermove', (e) => {
+        if (isWireAnimating || !selectedLeft || currentWireStage >= WIRE_STAGES.length) return;
+        const coords = getStageCoordinates(e.clientX, e.clientY);
+        const startCoord = SOCKET_CENTERS[`left-${selectedLeft}`];
+        if (startCoord) {
+          updatePreviewWire(startCoord.x, startCoord.y, coords.x, coords.y);
+        }
+      });
+
+      document.addEventListener('pointerup', (e) => {
+        if (isDragging) {
+          isDragging = false;
+          if (dragStartPos) {
+            const dist = Math.hypot(e.clientX - dragStartPos.x, e.clientY - dragStartPos.y);
+            if (dist > 40) {
+              // Dragged and released in empty area
+              clearSelection();
+            }
+          }
+        }
+      });
+
+      // ── Scroll-Triggered Power-Down & Rotation ────────────────────
+      async function triggerScrollAnimation() {
+        if (isScrollAnimationActive || hasAnimationFinished) return;
+        isScrollAnimationActive = true;
+
+        // Stop joystick animation
+        stopAnim();
+        keysHeld.clear();
+
+        // Ensure off image is ready
+        await ensureImageLoaded(offImg);
+
+        // 1. Change current arcade with start.png to arcade_screen_off.png
+        setScreenState('off');
+        animCanvas.style.display = 'block';
+        await sleep(100);
+
+        await ensureImageLoaded(onImg);
+
+        // Flicker 1: ON -> OFF
+        setScreenState('on');
+        await sleep(90);
+        setScreenState('off');
+        await sleep(90);
+
+        // Flicker 2: ON -> OFF
+        setScreenState('on');
+        await sleep(90);
+        setScreenState('off');
+        await sleep(120);
+
+        // Hide base layers so only rotation canvas is visible
+        screenViewport.style.display = 'none';
+        cabinetBase.style.display    = 'none';
+        sprite.style.display         = 'none';
+
+        // Ensure first rotation frame is loaded
+        await ensureImageLoaded(rotationImgs[0]);
+
+        // 2. Rotate from 0036 up to 0145 and PAUSE for wire puzzle!
+        await playFrameRange(36, 145);
+
+        // Show interactive sockets overlay at frame 0145
+        socketsOverlay.style.display = 'block';
+      }
+
+      // ── Scroll gesture listeners (triggers once, page doesn't scroll) ─
+      // Wheel event (mouse wheel / trackpad)
+      window.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        triggerScrollAnimation();
+      }, { passive: false });
+
+      // Touch gesture (mobile / touch screen swipe)
+      let touchStartY = null;
+      window.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length > 0) {
+          touchStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchmove', (e) => {
+        if (!isScrollAnimationActive && touchStartY !== null && e.touches && e.touches.length > 0) {
+          const deltaY = e.touches[0].clientY - touchStartY;
+          if (Math.abs(deltaY) > 15) {
+            if (e.cancelable) e.preventDefault();
+            triggerScrollAnimation();
+          }
+        }
+      }, { passive: false });
+
+      // Keyboard scroll trigger (ArrowDown, PageDown, Space)
+      window.addEventListener('keydown', (e) => {
+        if (!isScrollAnimationActive && ['ArrowDown', 'PageDown', ' '].includes(e.key)) {
+          e.preventDefault();
+          triggerScrollAnimation();
+        }
+      });
+    </script>
+</body>
+
+</html>
