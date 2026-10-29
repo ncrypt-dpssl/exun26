@@ -5,6 +5,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Arcade Screen</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="preconnect" href="https://storage.googleapis.com">
+  <link rel="preload" href="assets/background.webp" as="image" type="image/webp">
+  <link rel="preload" href="assets/arcade_screen_on.webp" as="image" type="image/webp">
+  <link rel="preload" href="assets/start.webp" as="image" type="image/webp">
+  <link rel="preload" href="assets/screen_on_light_on.webp" as="image" type="image/webp">
+  <link rel="preload" href="assets/joystick_frames/0000.webp" as="image" type="image/webp">
   <style>
     * {
       margin: 0;
@@ -14,7 +21,7 @@
 
     body {
       background-color: #000;
-      background-image: url('assets/background.png');
+      background-image: url('assets/background.webp');
       background-repeat: no-repeat;
       background-position: center center;
       background-size: cover;
@@ -278,13 +285,13 @@
   </div>
   <div class="arcade-stage">
     <div id="screen-viewport" class="screen-viewport">
-      <img src="assets/start.png" class="game-screen" alt="Game Background">
+      <img src="assets/start.webp" class="game-screen" alt="Game Background" decoding="async">
       <div class="screen-crt"></div>
     </div>
-    <img id="cabinet-base" src="assets/arcade_screen_on.png" class="arcade-cabinet" alt="Arcade Cabinet">
-    <img id="cabinet-light" src="assets/screen_on_light_on.png" class="arcade-cabinet cabinet-light"
-      alt="Arcade Cabinet Light On">
-    <img id="joystick-sprite" src="assets/joystick_frames/0000.webp" class="joystick-layer" alt="Joystick">
+    <img id="cabinet-base" src="assets/arcade_screen_on.webp" class="arcade-cabinet" alt="Arcade Cabinet" decoding="async">
+    <img id="cabinet-light" src="assets/screen_on_light_on.webp" class="arcade-cabinet cabinet-light"
+      alt="Arcade Cabinet Light On" decoding="async">
+    <img id="joystick-sprite" src="assets/joystick_frames/0000.webp" class="joystick-layer" alt="Joystick" decoding="async">
     <canvas id="anim-canvas" width="1920" height="1080" class="anim-canvas"></canvas>
 
     <div id="sockets-overlay" class="sockets-overlay">
@@ -325,25 +332,34 @@
     const cabinetLight = document.getElementById('cabinet-light');
 
     const minusJoystickImg = new Image();
-    minusJoystickImg.src = 'assets/arcade_screen_on_minus-joystick.png';
+    minusJoystickImg.decoding = 'async';
+    minusJoystickImg.src = 'assets/arcade_screen_on_minus-joystick.webp';
+
+    const joystickImgs = [];
+    for (let i = 0; i <= 35; i++) {
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = `assets/joystick_frames/${pad(i)}.webp`;
+      joystickImgs.push(img);
+    }
 
     let wiresFixed = false;
 
     function updateJoystickCabinetBackground(isMoving) {
       if (!cabinetBase) return;
       if (isMoving) {
-        if (cabinetBase.getAttribute('src') !== 'assets/arcade_screen_on_minus-joystick.png') {
-          cabinetBase.src = 'assets/arcade_screen_on_minus-joystick.png';
+        if (cabinetBase.getAttribute('src') !== 'assets/arcade_screen_on_minus-joystick.webp') {
+          cabinetBase.src = 'assets/arcade_screen_on_minus-joystick.webp';
         }
         if (cabinetLight) {
-          cabinetLight.style.webkitMaskImage = "url('assets/arcade_screen_on_minus-joystick.png')";
-          cabinetLight.style.maskImage = "url('assets/arcade_screen_on_minus-joystick.png')";
+          cabinetLight.style.webkitMaskImage = "url('assets/arcade_screen_on_minus-joystick.webp')";
+          cabinetLight.style.maskImage = "url('assets/arcade_screen_on_minus-joystick.webp')";
           cabinetLight.style.webkitMaskSize = '100% 100%';
           cabinetLight.style.maskSize = '100% 100%';
         }
       } else {
-        if (cabinetBase.getAttribute('src') !== 'assets/arcade_screen_on.png') {
-          cabinetBase.src = 'assets/arcade_screen_on.png';
+        if (cabinetBase.getAttribute('src') !== 'assets/arcade_screen_on.webp') {
+          cabinetBase.src = 'assets/arcade_screen_on.webp';
         }
         if (cabinetLight) {
           cabinetLight.style.webkitMaskImage = '';
@@ -628,13 +644,16 @@
     let hasAnimationFinished = false;
 
     const offImg = new Image();
-    offImg.src = 'assets/arcade_screen_off.png';
+    offImg.decoding = 'async';
+    offImg.src = 'assets/arcade_screen_off.webp';
 
     const onImg = new Image();
-    onImg.src = 'assets/arcade_screen_on.png';
+    onImg.decoding = 'async';
+    onImg.src = 'assets/arcade_screen_on.webp';
 
     const lightImg = new Image();
-    lightImg.src = 'assets/screen_on_light_on.png';
+    lightImg.decoding = 'async';
+    lightImg.src = 'assets/screen_on_light_on.webp';
 
     const MORSE_DICTIONARY = {
       'A': '.-',   'B': '-...', 'C': '-.-.', 'D': '-..',
@@ -684,6 +703,7 @@
 
     let morseRunning = false;
     let morseTimeout = null;
+    let initialMorseTimer = null;
     let morseIndex = 0;
     let currentMorseSequence = [];
     let currentMorseMessage = 'FIX WIRES';
@@ -719,6 +739,10 @@
     }
 
     function stopMorse() {
+      if (initialMorseTimer) {
+        clearTimeout(initialMorseTimer);
+        initialMorseTimer = null;
+      }
       morseRunning = false;
       if (morseTimeout) {
         clearTimeout(morseTimeout);
@@ -730,6 +754,7 @@
     const rotationImgs = [];
     for (let i = ROTATION_START; i <= ROTATION_END; i++) {
       const img = new Image();
+      img.decoding = 'async';
       img.src = `assets/rotation/${pad(i)}.webp`;
       rotationImgs.push(img);
     }
@@ -881,7 +906,7 @@
           screenViewport.style.visibility = 'visible';
           screenViewport.classList.remove('glow-off');
           cabinetBase.style.display = 'block';
-          cabinetBase.src = 'assets/arcade_screen_on.png';
+          cabinetBase.src = 'assets/arcade_screen_on.webp';
           sprite.style.display = 'block';
           if (cabinetLight) {
             cabinetLight.style.display = 'block';
@@ -1206,7 +1231,10 @@
 
     initCamera();
     initMediaPipe();
-    startMorse('FIX WIRES');
+    initialMorseTimer = setTimeout(() => {
+      startMorse('FIX WIRES');
+      initialMorseTimer = null;
+    }, 4000);
   </script>
 </body>
 
