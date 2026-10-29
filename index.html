@@ -145,46 +145,6 @@
       opacity: 1;
     }
 
-    .konami-banner {
-      position: absolute;
-      inset: 0;
-      z-index: 4;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      background: rgba(5, 20, 10, 0.88);
-      border: 4px solid #00ffaa;
-      box-shadow: 0 0 25px rgba(0, 255, 170, 0.7) inset, 0 0 40px rgba(0, 255, 170, 0.5);
-      opacity: 0;
-      pointer-events: none;
-      transform: scale(0.92);
-      transition: opacity 0.3s ease, transform 0.3s ease;
-      font-family: monospace;
-      text-align: center;
-      color: #00ffaa;
-    }
-
-    .konami-banner.show {
-      opacity: 1;
-      transform: scale(1);
-    }
-
-    .konami-title {
-      font-size: 30px;
-      font-weight: bold;
-      letter-spacing: 3px;
-      text-shadow: 0 0 10px #00ffaa, 0 0 20px #00ffaa;
-      margin-bottom: 12px;
-    }
-
-    .konami-sub {
-      font-size: 16px;
-      letter-spacing: 2px;
-      color: #fff;
-      text-shadow: 0 0 8px #fff;
-    }
-
     .joystick-layer {
       position: absolute;
       top: 0;
@@ -276,17 +236,49 @@
       pointer-events: none !important;
       cursor: default !important;
     }
+
+    .cam-circle-container {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      border: 3px solid #ff2233;
+      box-shadow: 0 0 15px rgba(255, 34, 51, 0.6), inset 0 0 10px rgba(255, 34, 51, 0.3);
+      overflow: hidden;
+      z-index: 100;
+      background: #000;
+      display: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .cam-circle-container.clap-flash {
+      border-color: #ffffff;
+      box-shadow: 0 0 35px #ff2233, 0 0 70px #ff0033;
+    }
+
+    .cam-circle-container video,
+    .cam-circle-container canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      transform: translate(-50%, -50%) scaleX(-1);
+      object-fit: cover;
+    }
   </style>
 </head>
 
 <body>
+  <div id="cam-container" class="cam-circle-container">
+    <video id="webcam" autoplay playsinline muted></video>
+    <canvas id="gesture-canvas"></canvas>
+  </div>
   <div class="arcade-stage">
     <div id="screen-viewport" class="screen-viewport">
       <img src="assets/start.png" class="game-screen" alt="Game Background">
-      <div id="konami-banner" class="konami-banner">
-        <div class="konami-title">KONAMI CODE ACTIVATED!</div>
-        <div class="konami-sub">OPENING EXUNCLAN.COM...</div>
-      </div>
       <div class="screen-crt"></div>
     </div>
     <img id="cabinet-base" src="assets/arcade_screen_on.png" class="arcade-cabinet" alt="Arcade Cabinet">
@@ -481,11 +473,6 @@
         konamiFallbackTimer = null;
       }
 
-      const banner = document.getElementById('konami-banner');
-      if (banner) {
-        banner.classList.add('show');
-      }
-
       const url = 'https://exunclan.com';
       try {
         const newTab = window.open(url, '_blank');
@@ -497,7 +484,6 @@
       }
 
       setTimeout(() => {
-        if (banner) banner.classList.remove('show');
         konamiTriggered = false;
       }, 3000);
     }
@@ -1047,6 +1033,179 @@
       }
     });
 
+    let GestureRecognizerClass = null;
+    let FilesetResolverClass = null;
+    let DrawingUtilsClass = null;
+    let recognizer = null;
+    let isCameraRunning = false;
+    let webcamStream = null;
+    let lastVideoTime = -1;
+    let handDistHistory = [];
+    let clapCooldown = false;
+
+    const camContainer = document.getElementById('cam-container');
+    const webcamVideo = document.getElementById('webcam');
+    const gestureCanvas = document.getElementById('gesture-canvas');
+
+    async function initMediaPipe() {
+      if (recognizer) return;
+      try {
+        const visionModule = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+        GestureRecognizerClass = visionModule.GestureRecognizer;
+        FilesetResolverClass = visionModule.FilesetResolver;
+        DrawingUtilsClass = visionModule.DrawingUtils;
+
+        const vision = await FilesetResolverClass.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+        try {
+          recognizer = await GestureRecognizerClass.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',
+              delegate: 'GPU'
+            },
+            runningMode: 'VIDEO',
+            numHands: 2
+          });
+        } catch (gpuErr) {
+          recognizer = await GestureRecognizerClass.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task',
+              delegate: 'CPU'
+            },
+            runningMode: 'VIDEO',
+            numHands: 2
+          });
+        }
+      } catch (err) {}
+    }
+
+    async function initCamera() {
+      if (isCameraRunning) return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: 320, height: 240 }
+        });
+        webcamStream = stream;
+        if (webcamVideo) {
+          webcamVideo.srcObject = stream;
+          await webcamVideo.play();
+          isCameraRunning = true;
+          if (camContainer) camContainer.style.display = 'block';
+          requestAnimationFrame(predictWebcam);
+        }
+      } catch (err) {
+        isCameraRunning = false;
+        if (camContainer) camContainer.style.display = 'none';
+      }
+    }
+
+    window.triggerMediaPipeClap = function () {
+      if (!isScrollAnimationActive && !hasAnimationFinished && !clapCooldown) {
+        clapCooldown = true;
+        if (camContainer) {
+          camContainer.classList.add('clap-flash');
+          setTimeout(() => {
+            if (camContainer) camContainer.classList.remove('clap-flash');
+          }, 400);
+        }
+        triggerScrollAnimation();
+        setTimeout(() => { clapCooldown = false; }, 2000);
+      }
+    };
+
+    window.triggerMediaPipeGesture = window.triggerMediaPipeClap;
+
+    function predictWebcam() {
+      if (!isCameraRunning) return;
+      if (!webcamVideo || !gestureCanvas) return;
+
+      const ctx = gestureCanvas.getContext('2d');
+      if (gestureCanvas.width !== webcamVideo.videoWidth || gestureCanvas.height !== webcamVideo.videoHeight) {
+        gestureCanvas.width = webcamVideo.videoWidth || 320;
+        gestureCanvas.height = webcamVideo.videoHeight || 240;
+      }
+
+      if (recognizer && webcamVideo.readyState >= 2 && webcamVideo.currentTime !== lastVideoTime) {
+        lastVideoTime = webcamVideo.currentTime;
+        const now = performance.now();
+        const results = recognizer.recognizeForVideo(webcamVideo, now);
+
+        ctx.clearRect(0, 0, gestureCanvas.width, gestureCanvas.height);
+
+        if (results && results.landmarks && results.landmarks.length > 0) {
+          if (DrawingUtilsClass) {
+            const du = new DrawingUtilsClass(ctx);
+            for (const handLandmarks of results.landmarks) {
+              du.drawConnectors(handLandmarks, GestureRecognizerClass.HAND_CONNECTIONS, { color: '#ff2233', lineWidth: 2 });
+              du.drawLandmarks(handLandmarks, { color: '#ff5566', lineWidth: 1, radius: 2 });
+            }
+          }
+
+          const nowTime = Date.now();
+          let isClap = false;
+
+          if (results.landmarks.length >= 2) {
+            const h1 = results.landmarks[0];
+            const h2 = results.landmarks[1];
+
+            const p1x = (h1[0].x + h1[9].x) / 2;
+            const p1y = (h1[0].y + h1[9].y) / 2;
+            const p2x = (h2[0].x + h2[9].x) / 2;
+            const p2y = (h2[0].y + h2[9].y) / 2;
+            const palmDist = Math.hypot(p1x - p2x, p1y - p2y);
+
+            const wristDist = Math.hypot(h1[0].x - h2[0].x, h1[0].y - h2[0].y);
+            const tipDist = Math.hypot(h1[8].x - h2[8].x, h1[8].y - h2[8].y);
+            const minDist = Math.min(palmDist, wristDist, tipDist);
+
+            const span1 = Math.hypot(h1[0].x - h1[9].x, h1[0].y - h1[9].y);
+            const span2 = Math.hypot(h2[0].x - h2[9].x, h2[0].y - h2[9].y);
+            const handSpan = Math.max(0.06, (span1 + span2) / 2);
+            const normDist = palmDist / handSpan;
+
+            handDistHistory.push({ time: nowTime, dist: palmDist, minDist: minDist, normDist: normDist });
+            handDistHistory = handDistHistory.filter(item => nowTime - item.time <= 550);
+
+            const isClose = (palmDist < 0.16 || minDist < 0.10 || normDist < 1.15);
+            const wasApart = handDistHistory.some(item => (nowTime - item.time >= 80) && (item.dist >= 0.22 || item.normDist >= 1.5));
+            const maxPast = handDistHistory.reduce((max, item) => (nowTime - item.time >= 80 && item.dist > max) ? item.dist : max, 0);
+            const approachDelta = maxPast - palmDist;
+            const isFastApproach = approachDelta >= 0.08;
+
+            if (isClose && wasApart && isFastApproach) {
+              isClap = true;
+            }
+          } else if (results.landmarks.length === 1) {
+            if (handDistHistory.length > 0) {
+              const recentApart = handDistHistory.some(item => (nowTime - item.time >= 80) && item.dist >= 0.20);
+              const lastEntry = handDistHistory[handDistHistory.length - 1];
+              if (recentApart && lastEntry.dist <= 0.18 && (nowTime - lastEntry.time <= 180)) {
+                isClap = true;
+              }
+            }
+            handDistHistory = [];
+          }
+
+          if (isClap && !clapCooldown && !isScrollAnimationActive && !hasAnimationFinished) {
+            clapCooldown = true;
+            if (camContainer) {
+              camContainer.classList.add('clap-flash');
+              setTimeout(() => {
+                if (camContainer) camContainer.classList.remove('clap-flash');
+              }, 400);
+            }
+            triggerScrollAnimation();
+            setTimeout(() => { clapCooldown = false; }, 2000);
+          }
+        } else {
+          handDistHistory = [];
+        }
+      }
+      requestAnimationFrame(predictWebcam);
+    }
+
+    initCamera();
+    initMediaPipe();
     startMorse('FIX WIRES');
   </script>
 </body>
